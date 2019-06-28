@@ -1,0 +1,143 @@
+{% load bootstrap3 static exam_utils core_utils %}
+{% with previous_revision=revision.get_previous %}
+    <div class="new-revision">
+      <h3 class="text-bold-600">Changes</h3>
+      {% if previous_revision %}
+      {% with previous_right_choice=previous_revision.get_right_choice new_right_choice=revision.get_right_choice %}
+      <ul>
+        {% if revision.change_summary %}
+        <li>The user provided the following change summary:  <em>"{{ revision.change_summary|urlize_target_blank|linebreaksbr}}"</em>.</li>
+        {% else %}
+        <li>The contributor did not provide a change summary.</li>
+        {% endif %}
+
+        {% if previous_revision.text.strip == revision.text.strip %}
+        <li class="success darken-4">The question text was <strong>not</strong> changed.</li>
+        {% else %}
+        <li>
+          The question text was changed:
+          <p id="revision-text-diff"></p>
+        </li>
+        {% endif %}
+
+        {% if revision|has_changed_choices:previous_revision %}
+        <li>Choices were changed:
+          <ul>
+            {% for new_text, previous_text, new_is_right in revision|get_choice_pairs:previous_revision %}
+            <li class="{% if new_is_right %}text-bold-700 {% endif %}choice-text-diff" data-new-text="{{ new_text }}" data-previous-text="{{ previous_text }}"></li>
+            {% endfor %}
+          </ul>
+        </li>
+        {% else %}
+        <li class="success darken-4">Choices were <strong>not</strong> changed.</li>
+        {% endif %}
+
+        {% if previous_right_choice and new_right_choice and previous_right_choice.text != new_right_choice.text  %}
+        <li class="warning darken-4">The right answer was changed from <em>"{{ previous_right_choice.text }}"</em> to <em>"{{ new_right_choice.text }}"</em>.</li>
+        {% elif not previous_right_choice and new_right_choice %}
+        <li class="warning darken-4">The right answer was set to be <em>"{{ new_right_choice.text }}"</em>.</li>
+        {% elif previous_right_choice and not new_right_choice %}
+        <li class="warning darken-4">The right answer was removed and it is no  longer <em>"{{ previous_right_choice.text }}"</em>.  With this revision, the question no longer has a right answer.</li>
+        {% elif  previous_right_choice and new_right_choice and previous_right_choicetext == new_right_choice %}
+        <li class="success darken-4">The right answer was <strong>not</strong> changed.</li>
+        {% endif %}
+      </ul>
+      {% endwith %}
+      {% else %}
+      <p>This was the first revision in question #{{ revision.question.pk }}</p>
+      {% endif %}
+    </div>
+    <div class="new-revision">
+      {% if review %}
+      <h3 class="text-bold-600">Newer revision of <a href="{% url 'exams:list_revisions' revision.question.exam.category.get_slugs revision.question.exam.pk revision.question.pk %}">question #{{ revision.question.pk }}</a></h3>
+      {% else %}
+      <h3 class="text-bold-600">Revision #{{ revision.pk }}</h3>
+      {% endif %}
+      {% if revision.figure %}<img class="img-fluid" src="{{ revision.figure.url }}">{% endif %}
+      <p class="revision-text">{{ revision.text }}</p>
+      <ul>
+         {% for choice in revision.choice_set.order_by_alphabet %}
+           <li data-choice-order="{{ forloop.counter }}" {% if choice.is_right %}class="choice-text text-bold-700 success darken-4"{% endif %}>{{ choice.text|linebreaksbr }}</li>
+         {% endfor %}
+      </ul>
+    </div>
+
+    <div {% if not review %}style="display: none;"{% endif %} class="previous-revision">
+      <h3 class="text-bold-600">Previous revision of <a href="{% url 'exams:list_revisions' revision.question.exam.category.get_slugs revision.question.exam.pk revision.question.pk %}">question #{{ revision.question.pk }}</a></h3>
+      {% if previous_revision.figure %}<img class="img-fluid"  src="{{ previous_revision.figure.url }}">{% endif %}
+      <p class="revision-text">{{ previous_revision.text }}</p>
+      <ul>
+         {% for choice in previous_revision.choice_set.order_by_alphabet %}
+           <li data-choice-order="{{ forloop.counter }}" {% if choice.is_right %}class="choice-text text-bold-700 success darken-4"{% endif %}>{{ choice.text|linebreaksbr }}</li>
+         {% endfor %}
+      </ul>
+    </div>
+
+{% if review %}
+ <div class="row">
+     <div class="col-sm-4">
+         <button data-pk="{{ revision.pk }}" data-url="{% url 'exams:delete_revision' revision.pk %}" type="button" class="btn btn-danger btn-rounded btn-sm pull-left confirm-delete-revision"><i class="ft-trash-2"></i> Delete revision</button>
+     </div>
+     <div class="col-sm-4 text-center">
+         <a href="{% url 'exams:submit_revision' revision.question.exam.category.get_slugs revision.question.exam.pk revision.question.pk %}" class="btn btn-warning btn-rounded btn-sm"><i class="ft-edit-2"></i> Edit question</a>
+     </div>
+     <div class="col-sm-4">
+         <button data-pk="{{ revision.pk }}" data-url="{% url 'exams:mark_revision_approved' revision.pk %}" type="button" class="btn btn-primary btn-rounded btn-sm pull-right approve-revision"><i class="ft-check-circle"></i> Approve revision</button>
+     </div>
+ </div>
+{% endif %}
+</div>
+
+{% if previous_revision and previous_revision.text.strip != revision.text.strip %}
+<script>
+var previous_text = $(".previous-revision .revision-text").text(),
+    new_text = $(".new-revision .revision-text").text(),
+    color = '',
+    span = null;
+
+var diff = JsDiff.diffChars(previous_text, new_text),
+    display = document.getElementById('revision-text-diff'),
+    fragment = document.createDocumentFragment();
+
+diff.forEach(function(part){
+  // green for additions, red for deletions
+  // grey for common parts
+  color = part.added ? 'green' :
+    part.removed ? 'red' : 'grey';
+  span = document.createElement('span');
+  span.style.color = color;
+  span.appendChild(document
+    .createTextNode(part.value));
+  fragment.appendChild(span);
+});
+
+display.appendChild(fragment);
+</script>
+{% endif %}
+{% if previous_revision and revision|has_changed_choices:previous_revision %}
+<script>
+var color = '',
+    span = null;
+
+$('.choice-text-diff').each(function(){
+  new_text = $(this).data('new-text');
+  previous_text = $(this).data('previous-text');
+
+  var diff = JsDiff.diffChars(previous_text, new_text),
+      fragment = document.createDocumentFragment();
+
+  diff.forEach(function(part){
+    // green for additions, red for deletions
+    // grey for common parts
+    color = part.added ? 'green' :
+      part.removed ? 'red' : 'grey';
+    span = document.createElement('span');
+    span.style.color = color;
+    span.appendChild(document.createTextNode(part.value));
+    fragment.appendChild(span);
+  });
+  $(this).append(fragment);
+});
+</script>
+{% endif %}
+{% endwith %}{# revision.get_previous #}
